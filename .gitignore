@@ -1,8 +1,11 @@
-# Папки сборки
-Debug/
-Release/
+# Игнорируем все внутри папок Debug и Release
+Debug/*
+Release/*
 
-# Объектные файлы
+# Явно разрешаем ELF файл
+!Debug/laser_stand.elf
+
+# Объектные файлы (если они вдруг лежат не в Debug, а в корнях Src)
 *.o
 *.d
 *.su
@@ -22,6 +25,3 @@ subdir.mk
 *.launch
 *.cfg
 .mxproject
-
-# Исключение для ELF (требование заказчика)
-!Debug/laser_stand.elf
