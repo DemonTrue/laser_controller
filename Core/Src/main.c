@@ -1,0 +1,509 @@
+/* USER CODE BEGIN Header */
+/**
+  ******************************************************************************
+  * @file           : main.c
+  * @brief          : Main program body
+  ******************************************************************************
+  * @attention
+  *
+  * Copyright (c) 2026 STMicroelectronics.
+  * All rights reserved.
+  *
+  * This software is licensed under terms that can be found in the LICENSE file
+  * in the root directory of this software component.
+  * If no LICENSE file comes with this software, it is provided AS-IS.
+  *
+  ******************************************************************************
+  */
+/* USER CODE END Header */
+/* Includes ------------------------------------------------------------------*/
+#include "main.h"
+#include "i2c.h"
+#include "tim.h"
+#include "usart.h"
+#include "gpio.h"
+
+/* Private includes ----------------------------------------------------------*/
+/* USER CODE BEGIN Includes */
+#include "stdio.h"
+
+#include "common.h"
+#include "app_context.h"
+#include "app_state.h"
+#include "button_handlers.h"
+#include "liquidcrystal_i2c.h"
+#include "laser_controller.h"
+//#include "one_pulse_mode_TIM1.h"
+#include "button.h"
+#include "encoder.h"
+#include "cooler.h"
+#include "peltier.h"
+#include "ui.h"
+#include "menu.h"
+#include "toggle_switch.h"
+/* USER CODE END Includes */
+
+/* Private typedef -----------------------------------------------------------*/
+/* USER CODE BEGIN PTD */
+
+/* USER CODE END PTD */
+
+/* Private define ------------------------------------------------------------*/
+/* USER CODE BEGIN PD */
+/* USER CODE END PD */
+
+/* Private macro -------------------------------------------------------------*/
+/* USER CODE BEGIN PM */
+
+/* USER CODE END PM */
+
+/* Private variables ---------------------------------------------------------*/
+
+/* USER CODE BEGIN PV */
+app_state_manager_t app_state_manager;
+
+laser_t laser;
+
+button_t button_main;
+button_t button_encoder;
+toggle_switch_t toggle_switch;
+
+encoder_t encoder = {
+	.htim = &htim2,
+	.step = 4,
+	.limit = true
+};
+
+cooler_t cooler;
+peltier_t peltier;
+menu_t menu;
+/* USER CODE END PV */
+
+/* Private function prototypes -----------------------------------------------*/
+void SystemClock_Config(void);
+/* USER CODE BEGIN PFP */
+
+/* USER CODE END PFP */
+
+/* Private user code ---------------------------------------------------------*/
+/* USER CODE BEGIN 0 */
+#ifdef __GNUC__
+#define PUTCHAR_PROTOTYPE int __io_putchar(int ch)
+#else
+#define PUTCHAR_PROTOTYPE int fputc(int ch, FILE *f)
+#endif
+
+PUTCHAR_PROTOTYPE
+{
+  HAL_UART_Transmit(&huart3, (uint8_t *)&ch, 1, HAL_MAX_DELAY);
+  return ch;
+}
+
+
+//void TIM1_generate_long_pulse(uint32_t duration, uint32_t arr, uint32_t psc)
+//{
+//    // Полная остановка и сброс
+//    TIM1->CR1 &= ~TIM_CR1_CEN;
+//    while(TIM1->CR1 & TIM_CR1_CEN);
+//
+//    pulse_target_ticks = duration;
+//    pulse_tick_count = 0;
+//    is_pulse_active = 1;
+//
+//    // Настройка параметров
+//    TIM1->PSC = psc - 1;
+//    TIM1->ARR = arr - 1;
+//    TIM1->CNT = 0;
+//    TIM1->CCR1 = 0;
+//
+//    // Обновление регистров (UG)
+//    TIM1->SR &= ~TIM_SR_UIF;
+//    TIM1->EGR |= TIM_EGR_UG;
+//    while(!(TIM1->SR & TIM_SR_UIF));
+//    TIM1->SR &= ~TIM_SR_UIF;
+//
+//
+//    // Включение прерываний
+//    TIM1->DIER |= TIM_DIER_UIE;
+//	NVIC_SetPriority(TIM1_UP_TIM10_IRQn, 0); // Максимальный приоритет!
+//    NVIC_EnableIRQ(TIM1_UP_TIM10_IRQn);
+//
+//
+//    // Запуск
+////    // Включаем MOE ДО запуска таймера, чтобы фронт сформировался корректно
+////    TIM1->BDTR |= TIM_BDTR_MOE;
+//    TIM1->CR1 |= TIM_CR1_CEN;
+//}
+//
+//
+//void TIM1_UP_TIM10_IRQHandler(void)
+//{
+////	GPIOA->ODR ^= GPIO_PIN_7;
+//    // Проверяем, наше ли это прерывание (флаг UIF)
+//    if (TIM1->SR & TIM_SR_UIF)
+//    {
+//        // Сразу сбрасываем флаг! �?наче прерывание сработает бесконечно
+//        TIM1->SR &= ~TIM_SR_UIF;
+////        printf("kek\r\n");
+//
+//        if (is_pulse_active)
+//        {
+//            pulse_tick_count++;
+////            printf("tick count = %lu\r\n", pulse_tick_count);
+//
+//            if (pulse_tick_count >= pulse_target_ticks)
+//            {
+//                // Выключаем импульс (PWM Mode 2: Low when CNT <= CCR)
+//                TIM1->CCR1 = TIM1->ARR;
+//
+//                is_pulse_active = 0;
+//
+//                // Выключаем прерывания
+//                TIM1->DIER &= ~TIM_DIER_UIE;
+//
+//                // Останавливаем таймер
+//                TIM1->CR1 &= ~TIM_CR1_CEN;
+//                while(TIM1->CR1 & TIM_CR1_CEN);
+//
+//                TIM1->BDTR &= ~TIM_BDTR_MOE;
+//            }
+//        }
+//    }
+//}
+//
+
+
+
+
+//volatile uint32_t pulse_tick_count = 0;
+//volatile uint32_t pulse_target_ticks = 0;
+//volatile uint8_t is_pulse_active = 0;
+volatile uint8_t is_last_period = 0;
+
+
+//void TIM1_generate_long_pulse(uint32_t duration, uint32_t arr, uint32_t psc)
+//{
+//    // Полная остановка и сброс
+//    TIM1->CR1 &= ~TIM_CR1_CEN;
+//    while(TIM1->CR1 & TIM_CR1_CEN);
+//
+//    pulse_target_ticks = duration;
+//    pulse_tick_count = 0;
+//    is_pulse_active = 1;
+//
+//    // Настройка параметров
+//    TIM1->PSC = psc - 1;
+//    TIM1->ARR = arr - 1;
+//    TIM1->CNT = 0;
+//    TIM1->CCR1 = 0;
+//
+//    TIM1->CCMR1 &= ~TIM_CCMR1_OC1PE;
+//
+//    // Обновление регистров (UG)
+//    TIM1->SR &= ~TIM_SR_UIF;
+//    TIM1->EGR |= TIM_EGR_UG;
+//    while(!(TIM1->SR & TIM_SR_UIF));
+//    TIM1->SR &= ~TIM_SR_UIF;
+//
+//    // Включение прерываний
+//    TIM1->DIER |= TIM_DIER_UIE;
+//	NVIC_SetPriority(TIM1_UP_TIM10_IRQn, 0); // Максимальный приоритет!
+//    NVIC_EnableIRQ(TIM1_UP_TIM10_IRQn);
+//
+////	TIM1->DIER |= TIM_DIER_CC1IE;   // точное выключение
+////	NVIC_SetPriority(TIM1_CC_IRQn, 0);
+////	NVIC_EnableIRQ(TIM1_CC_IRQn);
+////
+////	TIM1->SR = 0;
+//
+//    // Запуск
+//    TIM1->CR1 |= TIM_CR1_CEN;
+//}
+//
+//
+//void TIM1_UP_TIM10_IRQHandler(void)
+//{
+////	GPIOA->ODR ^= GPIO_PIN_7;
+//    // Проверяем, наше ли это прерывание (флаг UIF)
+//    if (TIM1->SR & TIM_SR_UIF)
+//    {
+//        // Сразу сбрасываем флаг, иначе прерывание сработает бесконечно
+//        TIM1->SR &= ~TIM_SR_UIF;
+//
+//        if (is_pulse_active)
+//        {
+//            pulse_tick_count++;
+//
+//            if (pulse_tick_count >= pulse_target_ticks)
+//            {
+//                // Выключаем импульс (PWM Mode 2: Low when CNT <= CCR)
+//                TIM1->CCR1 = TIM1->ARR;
+//
+//                is_pulse_active = 0;
+//
+//                is_last_period = 1;
+//
+//                // Выключаем прерывания
+//                TIM1->DIER &= ~TIM_DIER_UIE;
+//
+//                // Останавливаем таймер
+//                TIM1->CR1 &= ~TIM_CR1_CEN;
+//                while(TIM1->CR1 & TIM_CR1_CEN);
+//
+//            }
+//        }
+//    }
+//}
+
+
+void TIM1_CC_IRQHandler(void)
+{
+//	printf("kek\r\n");
+    if (TIM1->SR & TIM_SR_CC1IF)
+    {
+		TIM1->SR &= ~TIM_SR_CC1IF;
+
+    	if (is_last_period)
+    	{
+			// Останавливаем таймер
+			TIM1->CR1 &= ~TIM_CR1_CEN;
+
+			// Выключаем прерывания
+			TIM1->DIER &= ~(TIM_DIER_UIE | TIM_DIER_CC1IE);
+
+			is_last_period = 0;
+    	}
+    }
+}
+
+
+void TIM1_UP_TIM10_IRQHandler(void)
+{
+	TIM1_handle_up_interrupt(&laser);
+}
+/* USER CODE END 0 */
+
+/**
+  * @brief  The application entry point.
+  * @retval int
+  */
+int main(void)
+{
+  /* USER CODE BEGIN 1 */
+
+  /* USER CODE END 1 */
+
+  /* MCU Configuration--------------------------------------------------------*/
+
+  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
+  HAL_Init();
+
+  /* USER CODE BEGIN Init */
+
+  /* USER CODE END Init */
+
+  /* Configure the system clock */
+  SystemClock_Config();
+
+  /* USER CODE BEGIN SysInit */
+
+  /* USER CODE END SysInit */
+
+  /* Initialize all configured peripherals */
+  MX_GPIO_Init();
+  MX_I2C1_Init();
+  MX_TIM2_Init();
+  MX_USART3_UART_Init();
+  /* USER CODE BEGIN 2 */
+  app_state_init(&app_state_manager);
+
+  init_laser_controller(&laser);
+
+  HAL_TIM_Encoder_Start(&htim2, TIM_CHANNEL_ALL);
+  encoder_init(&encoder);
+
+  // инициализация кнопок
+  button_init(&button_main,
+		  BUTTON_MAIN_GPIO_Port,
+  		  BUTTON_MAIN_Pin,
+  		  BUTTON_ID_MAIN,
+  		  BUTTON_MODE_POLLING,
+  		  on_main_button_short_press,
+  		  on_main_button_long_press,
+  		  NULL,
+  		  &app_state_manager);
+
+  button_init(&button_encoder,
+  		  BUTTON_ENCODER_GPIO_Port,
+  		  BUTTON_ENCODER_Pin,
+  		  BUTTON_ID_UP,
+  		  BUTTON_MODE_POLLING,
+  		  on_encoder_button_short_press,
+  		  on_encoder_button_long_press,
+  		  NULL,
+  		  &app_state_manager);
+
+
+  toggle_switch_init(&toggle_switch,
+  		  SWITCH_GPIO_Port,
+  		  SWITCH_Pin,
+  		  TOGGLE_SWITCH_ID_MAIN,
+  		  TOGGLE_SWITCH_MODE_POLLING,
+  		  on_toggle_switch_state_change,
+  		  &app_state_manager);
+
+
+  cooler_init(&cooler);
+  peltier_init(&peltier);
+
+  menu_init(&menu);
+  ui_init();
+
+//  uint32_t last_update_pwm = HAL_GetTick();
+//  uint8_t first_update_flag = 0;
+//
+//  TIM1_OnePulse_Init(20, 100, 100, DEADTIME_TICKS);
+//
+//  extern time_range_config_t time_range_table[RANGE_COUNT];
+//
+////  laser.pulse_duration = 10;
+////  laser.time_range_config = &time_range_table[RANGE_US];
+//
+//  laser.pulse_duration = 1;
+//  laser.time_range_config = &time_range_table[RANGE_SEC];
+//
+//  printf("start\r\n");
+
+
+//  TIM1_generate_long_pulse(10, 10000, 1000);
+//  HAL_Delay(1);
+//  TIM1_generate_short_pulse(100, 1000, 1000);
+  /* USER CODE END 2 */
+
+  /* Infinite loop */
+  /* USER CODE BEGIN WHILE */
+  while (1)
+  {
+//	  TIM1_generate_long_pulse(10, 10000, 1000);
+//	  laser_generate_long_pulse(&laser);
+//	  HAL_Delay(2000);
+//	  GPIOA->ODR ^= GPIO_PIN_7;
+//	  printf("lol\r\n");
+//	  HAL_Delay(1000);
+
+//	  TIM1_generate_long_pulse(1, 3, 1000);
+//	  HAL_Delay(1);
+
+//	  laser_generate_short_pulse(&laser);
+//	  HAL_Delay(1);
+
+//	  TIM1_generate_short_pulse(10, 100, 100);
+//	  HAL_Delay(1);
+
+
+//	  TIM1_generate_long_pulse(100, 10, 100);
+//	  HAL_Delay(1000);
+
+//	  HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+//	  printf("kek\r\n");
+//	  HAL_Delay(1000);
+
+//	  printf("kek\r\n");
+
+	  // heartbeat
+	  blink_led(LED_GPIO_Port, LED_Pin, HEARTBEAT_DELAY);
+
+	  // обработка нажатия кнопок
+	  handle_button_events(&button_main);
+	  handle_button_events(&button_encoder);
+	  handle_toggle_switch_events(&toggle_switch);
+
+	  app_update(&app_state_manager);
+    /* USER CODE END WHILE */
+
+    /* USER CODE BEGIN 3 */
+  }
+  /* USER CODE END 3 */
+}
+
+/**
+  * @brief System Clock Configuration
+  * @retval None
+  */
+void SystemClock_Config(void)
+{
+  RCC_OscInitTypeDef RCC_OscInitStruct = {0};
+  RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+
+  /** Configure the main internal regulator output voltage
+  */
+  __HAL_RCC_PWR_CLK_ENABLE();
+  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
+
+  /** Initializes the RCC Oscillators according to the specified parameters
+  * in the RCC_OscInitTypeDef structure.
+  */
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.HSEState = RCC_HSE_ON;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
+  RCC_OscInitStruct.PLL.PLLM = 12;
+  RCC_OscInitStruct.PLL.PLLN = 100;
+  RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
+  RCC_OscInitStruct.PLL.PLLQ = 2;
+  RCC_OscInitStruct.PLL.PLLR = 2;
+  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Initializes the CPU, AHB and APB buses clocks
+  */
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
+                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
+  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
+
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+}
+
+/* USER CODE BEGIN 4 */
+
+/* USER CODE END 4 */
+
+/**
+  * @brief  This function is executed in case of error occurrence.
+  * @retval None
+  */
+void Error_Handler(void)
+{
+  /* USER CODE BEGIN Error_Handler_Debug */
+  /* User can add his own implementation to report the HAL error return state */
+  __disable_irq();
+  while (1)
+  {
+  }
+  /* USER CODE END Error_Handler_Debug */
+}
+
+#ifdef  USE_FULL_ASSERT
+/**
+  * @brief  Reports the name of the source file and the source line number
+  *         where the assert_param error has occurred.
+  * @param  file: pointer to the source file name
+  * @param  line: assert_param error line source number
+  * @retval None
+  */
+void assert_failed(uint8_t *file, uint32_t line)
+{
+  /* USER CODE BEGIN 6 */
+  /* User can add his own implementation to report the file name and line number,
+     ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
+  /* USER CODE END 6 */
+}
+#endif /* USE_FULL_ASSERT */

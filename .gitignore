@@ -1,0 +1,27 @@
+# Папки сборки
+Debug/
+Release/
+
+# Объектные файлы
+*.o
+*.d
+*.su
+*.list
+*.map
+
+# Makefile артефакты
+objects.list
+objects.mk
+sources.mk
+makefile
+subdir.mk
+
+# Настройки IDE и ОС
+.settings/
+.vscode/
+*.launch
+*.cfg
+.mxproject
+
+# Исключение для ELF (требование заказчика)
+!Debug/laser_stand.elf
