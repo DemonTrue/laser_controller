@@ -50,10 +50,11 @@ void on_main_button_short_press(void* context, button_id_t id)
             break;
 
         case APP_STATE_LASER_EXPERIMENT:
-        	//TODO: добавить возможность вырубать импульс
         	if (laser->pulse_type == LONG_PULSE && HAL_GetTick() - laser->last_update_time > ABORT_COOLDOWN_TIME)
         	{
         		laser->experiment_aborted = true;
+
+        		HAL_GPIO_WritePin(LED_BUTTON_GPIO_Port, LED_BUTTON_Pin, GPIO_PIN_RESET);
         	}
 
             break;
@@ -79,8 +80,6 @@ void on_main_button_long_press(void* context, button_id_t id)
             break;
 
         case APP_STATE_MENU:
-        	// TODO: здесь переход между диапазонами времени??? мс\мкс\с
-//        	HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
             break;
 
         default:
@@ -181,16 +180,12 @@ void on_toggle_switch_state_change(void* context, toggle_switch_t* toggle_switch
                 laser->switch_state = true;
                 app_state_transition(manager, APP_STATE_LASER_EXPERIMENT);
 			}
-			else
-			{
-				//TODO: ШТО???
-				HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
-				manager->app_context.laser_is_active = false;
-			}
             break;
 
         case APP_STATE_LASER_EXPERIMENT:
             laser->switch_state = false;
+
+    		HAL_GPIO_WritePin(LED_BUTTON_GPIO_Port, LED_BUTTON_Pin, GPIO_PIN_RESET);
             break;
 
         default:

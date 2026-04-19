@@ -67,6 +67,8 @@ void Error_Handler(void);
 #define BUTTON_MAIN_GPIO_Port GPIOA
 #define SWITCH_Pin GPIO_PIN_5
 #define SWITCH_GPIO_Port GPIOA
+#define LED_BUTTON_Pin GPIO_PIN_6
+#define LED_BUTTON_GPIO_Port GPIOA
 #define LED_Pin GPIO_PIN_7
 #define LED_GPIO_Port GPIOA
 /* USER CODE BEGIN Private defines */

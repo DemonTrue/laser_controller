@@ -4,6 +4,7 @@
 #include "stdio.h"
 #include "string.h"
 #include "menu.h"
+#include "common.h"
 
 void ui_init(void)
 {
@@ -21,7 +22,7 @@ void ui_intro(void)
     HD44780_PrintStr("DEVELOPED BY");
 
     HD44780_SetCursor(0, 1);
-    HD44780_PrintStr("OLEG'S TEAM VER 0.1");
+    HD44780_PrintStr("OLEG'S TEAM");
 
     HD44780_Display();  // Включаем дисплей
 
@@ -31,8 +32,7 @@ void ui_intro(void)
     HD44780_NoCursor();
 
     HD44780_SetCursor(0,0);
-    // TODO: ввести константу в common для рисования версии, а не текстом
-    HD44780_PrintStr("VERSION 0.1");
+    HD44780_PrintStr(FW_VERSION);
 
     HAL_Delay(1000);
 }
@@ -107,11 +107,6 @@ void ui_update_menu(int32_t time_value, int32_t cooler_value, int32_t peltier_va
             cursor_col = 7;
             cursor_active = true;
         }
-//        else if (digit_state == DIGIT_STATE_4)
-//        {
-//            cursor_col = 7;
-//            cursor_active = true;
-//        }
     }
 
     // Строка 1: FAN / PELTIER-
@@ -167,9 +162,6 @@ void ui_update_pulse_experiment(int32_t cooler_value, int32_t peltier_value,
 {
 	HD44780_Clear();
     char buf[17];
-    uint8_t cursor_col = 0;
-    uint8_t cursor_row = 0;
-    bool cursor_active = false;
 
     HD44780_NoCursor();
 
@@ -187,41 +179,6 @@ void ui_update_pulse_experiment(int32_t cooler_value, int32_t peltier_value,
 
     HD44780_SetCursor(0, 1);
     HD44780_PrintStr(buf);
-
-    if (position == 1) // FAN
-    {
-        cursor_row = 1;
-        if (digit_state == DIGIT_STATE_1)
-        {
-            cursor_col = 7;
-            cursor_active = true;
-        }
-        else if (digit_state == DIGIT_STATE_2)
-        {
-            cursor_col = 6;
-            cursor_active = true;
-        }
-    }
-    else if (position == 2) // PELTIER
-    {
-        cursor_row = 1;
-        if (digit_state == DIGIT_STATE_1)
-        {
-            cursor_col = 15;
-            cursor_active = true;
-        }
-        else if (digit_state == DIGIT_STATE_2)
-        {
-            cursor_col = 14;
-            cursor_active = true;
-        }
-    }
-
-    // 2. Включаем только если позиция валидна
-    if (cursor_active) {
-        HD44780_SetCursor(cursor_col, cursor_row);
-        HD44780_Cursor();
-    }
 }
 
 
@@ -230,14 +187,10 @@ void ui_update_continuous_experiment(int32_t cooler_value, int32_t peltier_value
 {
 //	HD44780_Clear();
     char buf[17];
-    uint8_t cursor_col = 0;
-    uint8_t cursor_row = 0;
-    bool cursor_active = false;
 
     HD44780_NoCursor();
 
     HD44780_SetCursor(1,0);
-//    HD44780_PrintStr("CONTINUOUS");
 
     uint32_t total_seconds = elapsed_time / 1000;
     uint8_t minutes = total_seconds / 60;
@@ -257,39 +210,4 @@ void ui_update_continuous_experiment(int32_t cooler_value, int32_t peltier_value
 
     HD44780_SetCursor(0, 1);
     HD44780_PrintStr(buf);
-
-    if (position == 1) // FAN
-    {
-        cursor_row = 1;
-        if (digit_state == DIGIT_STATE_1)
-        {
-            cursor_col = 7;
-            cursor_active = true;
-        }
-        else if (digit_state == DIGIT_STATE_2)
-        {
-            cursor_col = 6;
-            cursor_active = true;
-        }
-    }
-    else if (position == 2) // PELTIER
-    {
-        cursor_row = 1;
-        if (digit_state == DIGIT_STATE_1)
-        {
-            cursor_col = 15;
-            cursor_active = true;
-        }
-        else if (digit_state == DIGIT_STATE_2)
-        {
-            cursor_col = 14;
-            cursor_active = true;
-        }
-    }
-
-    // 2. Включаем только если позиция валидна
-    if (cursor_active) {
-        HD44780_SetCursor(cursor_col, cursor_row);
-        HD44780_Cursor();
-    }
 }

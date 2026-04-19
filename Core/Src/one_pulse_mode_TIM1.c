@@ -1,12 +1,10 @@
 #include "one_pulse_mode_TIM1.h"
-// TODO: Избавиться от циклической зависимости...
 
 // Переменные для управления длительным импульсом
 volatile uint32_t pulse_tick_count = 0;
 volatile uint32_t pulse_target_ticks = 0;
 volatile uint8_t is_pulse_active = 0;
 
-extern time_range_config_t time_range_table[RANGE_COUNT];
 
 void TIM1_OnePulse_Init(uint32_t pulse_width, uint32_t arr, uint32_t psc, uint16_t deadtime)
 {
@@ -197,76 +195,4 @@ void TIM1_generate_long_pulse(uint32_t duration, uint32_t arr, uint32_t psc)
 
     // Запуск
     TIM1->CR1 |= TIM_CR1_CEN;
-}
-
-
-void TIM1_handle_up_interrupt(laser_t* laser)
-{
-    // Проверяем, наше ли это прерывание (флаг UIF)
-    if (TIM1->SR & TIM_SR_UIF)
-    {
-        // Сразу сбрасываем флаг, иначе прерывание сработает бесконечно
-        TIM1->SR &= ~TIM_SR_UIF;
-
-        switch (laser->pulse_type)
-        {
-        	case SHORT_PULSE:
-				// Выключаем прерывания
-				TIM1->DIER &= ~TIM_DIER_UIE;
-
-				laser->is_active = false;
-
-				is_pulse_active = 0;
-        		break;
-
-        	case LONG_PULSE:
-				if (is_pulse_active)
-				{
-					pulse_tick_count++;
-
-					if (pulse_tick_count >= pulse_target_ticks || laser->experiment_aborted)
-					{
-						// Выключаем импульс (PWM Mode 2: Low when CNT <= CCR)
-						TIM1->CCR1 = TIM1->ARR;
-
-						is_pulse_active = 0;
-
-						// Выключаем прерывания
-						TIM1->DIER &= ~TIM_DIER_UIE;
-
-						// Останавливаем таймер
-						TIM1->CR1 &= ~TIM_CR1_CEN;
-						while(TIM1->CR1 & TIM_CR1_CEN);
-
-						laser->is_active = false;
-						laser->experiment_aborted = false;
-					}
-				}
-				break;
-
-        	case CONTINUOUS_PULSE:
-        		if (!laser->switch_state || laser->elapsed_time > laser->max_pulse_time)
-        		{
-					// Выключаем импульс (PWM Mode 2: Low when CNT <= CCR)
-					TIM1->CCR1 = TIM1->ARR;
-
-					// Выключаем прерывания
-					TIM1->DIER &= ~TIM_DIER_UIE;
-					is_pulse_active = 0;
-
-					// Останавливаем таймер
-					TIM1->CR1 &= ~TIM_CR1_CEN;
-					while(TIM1->CR1 & TIM_CR1_CEN);
-
-					laser->is_active = false;
-					laser->switch_used = false;
-					laser->switch_state = false; // Сброс на всякий случай
-
-					//TODO: сделать это элегнатнее? Сохранять прошлое значение типа, например
-					laser->pulse_type = SHORT_PULSE;
-					laser->time_range_config = &time_range_table[RANGE_US];
-        		}
-        		break;
-        }
-    }
 }

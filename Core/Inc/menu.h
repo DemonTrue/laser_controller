@@ -25,7 +25,7 @@ typedef struct {
 	digit_state_t digit_state;
 	uint16_t digit;
 	int8_t number_of_unit; //TODO: подумать как согласовать с лазером на старте...
-	const char* unit; //TODO:
+	const char* unit;
 } menu_t;
 
 

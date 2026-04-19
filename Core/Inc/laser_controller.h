@@ -16,9 +16,10 @@ typedef enum {
 
 
 typedef struct {
-    uint32_t psc;                // Значение для регистра PSC
-    uint32_t ticks_per_unit;     // Коэффициент: сколько тиков в 1 единице ввода (1мкс, 1мс, 1с)
-    const char* label;           // Название для меню
+    uint32_t psc;				// Значение для регистра PSC
+    uint32_t ticks_per_unit;	// Коэффициент: сколько тиков в 1 единице ввода (1мкс, 1мс, 1с)
+    const char* label;			// Название для меню
+    time_range_t type;			// Режим
 } time_range_config_t;
 
 
@@ -50,6 +51,7 @@ typedef struct
 
 
 void init_laser_controller(laser_t* laser);
+void laser_handle_up_interrupt(laser_t* laser);
 void laser_generate_short_pulse(laser_t* laser);
 void laser_generate_long_pulse(laser_t* laser);
 void laser_generate_continuous_pulse(laser_t* laser);

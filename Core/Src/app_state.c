@@ -27,160 +27,8 @@ extern menu_t menu;
 extern toggle_switch_t toggle_switch;
 
 static void check_encoder_limits(encoder_t* encoder, menu_t* menu, laser_t* laser, cooler_t* cooler, peltier_t* peltier);
+static void encoder_sync_position(encoder_t* encoder, menu_t* menu, laser_t* laser, cooler_t* cooler, peltier_t* peltier);
 static void switch_safety(void);
-
-
-/**
- * @brief Функция, которая сообщает, что МК жив
- */
-void blink_led(GPIO_TypeDef* gpio_port, uint16_t gpio_pin, uint32_t delay)
-{
-	static uint32_t last_led_update = 0;
-
-    if (HAL_GetTick() - last_led_update > delay)
-    {
-        HAL_GPIO_TogglePin(gpio_port, gpio_pin);
-        last_led_update = HAL_GetTick();
-    }
-}
-
-
-/**
- * @brief Обработчик состояния интро (INTRO)
- * @param context Указатель на менеджер состояний приложения
- *
- * Отображает заставку и проверяет состояние тумблера, затем переходит в меню.
- */
-void handle_intro_state(void* context)
-{
-    if (context == NULL) return;
-
-    app_state_manager_t* manager = (app_state_manager_t*)context;
-
-    // Заставка
-	ui_intro();
-
-	// Проверка, не остался ли включенным тумблер
-	switch_safety();
-
-	app_state_transition(manager, APP_STATE_MENU);
-	ui_clear();
-
-}
-
-
-void handle_menu_state(void* context)
-{
-    if (context == NULL) return;
-
-    app_state_manager_t* manager = (app_state_manager_t*)context;
-    laser_t* laser = manager->app_context.laser;
-    encoder_t* encoder = manager->app_context.encoder;
-    cooler_t* cooler = manager->app_context.cooler;
-    peltier_t* peltier = manager->app_context.peltier;
-    menu_t* menu = manager->app_context.menu;
-
-    static int32_t last_encoder_value = -1;
-    static menu_state_t last_menu_state = 255;
-    static uint8_t last_digit_state = 255;
-
-    encoder_update(encoder);
-
-    check_encoder_limits(encoder, menu, laser, cooler, peltier);
-
-    if (manager->app_context.first_entry_state)
-    {
-        ui_update_menu(laser->pulse_duration, cooler->power, peltier->power,
-        		menu->position, menu->digit_state, laser->time_range_config->label);
-        manager->app_context.first_entry_state = false;
-    }
-
-    // Проверяем все, что может измениться
-    if (encoder->position_norm != last_encoder_value ||
-        menu->menu_state != last_menu_state ||
-        menu->digit_state != last_digit_state)
-    {
-        menu_update_value(menu);
-
-        ui_update_menu(laser->pulse_duration, cooler->power, peltier->power,
-        		menu->position, menu->digit_state, menu->unit);
-
-        last_encoder_value = encoder->position_norm;
-        last_menu_state = menu->menu_state;
-        last_digit_state = menu->digit_state;
-    }
-}
-
-
-/**
- * @brief Обработчик состояния измерений (MEASURING)
- * @param context Указатель на менеджер состояний приложения
- *
- * Управляет активным экспериментом: обновляет измерения, контролирует мотор,
- * проверяет безопасность и обрабатывает состояния экспериментального автомата.
- */
-void handle_experiment_state(void* context)
-{
-    if (context == NULL) return;
-
-    app_state_manager_t* manager = (app_state_manager_t*)context;
-    laser_t* laser = manager->app_context.laser;
-    cooler_t* cooler = manager->app_context.cooler;
-    peltier_t* peltier = manager->app_context.peltier;
-    menu_t* menu = manager->app_context.menu;
-
-    static uint32_t last_display_update = 0;
-	uint32_t time_now = HAL_GetTick();
-
-    if (manager->app_context.first_entry_state)
-    {
-    	manager->app_context.first_entry_state = false;
-    	laser->is_active = true;
-
-    	// Время для лазера обновляется лишь на старте
-    	laser->last_update_time = time_now;
-    	last_display_update = time_now;
-		laser->elapsed_time = 0;
-
-		HD44780_Clear();
-    	// Используем разные функции ui для разных режимов
-    	if (laser->switch_used)
-    	{
-    		ui_update_continuous_experiment(cooler->power, peltier->power,
-                    menu->position, menu->digit_state, MAX_CONTINIOUS_PULSE_TIME);
-    	}
-    	else
-    	{
-    		ui_update_pulse_experiment(cooler->power, peltier->power,
-                    menu->position, menu->digit_state);
-    	}
-    }
-
-    if (laser->pulse_type == CONTINUOUS_PULSE && time_now - last_display_update > DISPLAY_EXPERIMENT_UPDATE_TIME)
-    {
-    	laser->elapsed_time = time_now - laser->last_update_time;
-
-		ui_update_continuous_experiment(cooler->power, peltier->power,
-                menu->position, menu->digit_state, MAX_CONTINIOUS_PULSE_TIME - laser->elapsed_time);
-
-    	last_display_update = HAL_GetTick();
-
-    	if (laser->elapsed_time > MAX_CONTINIOUS_PULSE_TIME)
-    	{
-			manager->app_context.laser_is_active = false;
-			switch_safety();
-    	}
-    }
-
-    // Проверяем выключился ли лазер. Если выключился, то гарантируем,
-    // что приложение сразу не перейдет в меню и картинка успеет отобразиться
-    if (!laser->is_active && (HAL_GetTick() - laser->last_update_time) > MIN_DISPLAY_PULSE_TIME)
-    {
-    	manager->app_context.laser_is_active = false;
-    	manager->app_context.first_entry_state = true;
-    	app_state_transition(manager, APP_STATE_MENU);
-    }
-}
 
 
 /**
@@ -259,14 +107,175 @@ void app_update(app_state_manager_t* manager)
 
 
 /**
+ * @brief Обработчик состояния интро (INTRO)
+ * @param context Указатель на менеджер состояний приложения
+ *
+ * Отображает заставку и проверяет состояние тумблера, затем переходит в меню.
+ */
+void handle_intro_state(void* context)
+{
+    if (context == NULL) return;
+
+    app_state_manager_t* manager = (app_state_manager_t*)context;
+
+    // Заставка
+	ui_intro();
+
+	// Проверка, не остался ли включенным тумблер
+	switch_safety();
+
+	app_state_transition(manager, APP_STATE_MENU);
+	ui_clear();
+
+}
+
+
+void handle_menu_state(void* context)
+{
+    if (context == NULL) return;
+
+    app_state_manager_t* manager = (app_state_manager_t*)context;
+    laser_t* laser = manager->app_context.laser;
+    encoder_t* encoder = manager->app_context.encoder;
+    cooler_t* cooler = manager->app_context.cooler;
+    peltier_t* peltier = manager->app_context.peltier;
+    menu_t* menu = manager->app_context.menu;
+
+    static int32_t last_encoder_value = -1;
+    static menu_state_t last_menu_state = 255;
+    static uint8_t last_digit_state = 255;
+
+    if (manager->app_context.first_entry_state)
+    {
+    	encoder_sync_position(encoder, menu, laser, cooler, peltier);
+
+        ui_update_menu(laser->pulse_duration, cooler->power, peltier->power,
+        		menu->position, menu->digit_state, laser->time_range_config->label);
+        manager->app_context.first_entry_state = false;
+    }
+
+    encoder_update(encoder);
+
+    check_encoder_limits(encoder, menu, laser, cooler, peltier);
+
+
+    // Проверяем все, что может измениться
+    if (encoder->position_norm != last_encoder_value ||
+        menu->menu_state != last_menu_state ||
+        menu->digit_state != last_digit_state)
+    {
+        menu_update_value(menu);
+
+        ui_update_menu(laser->pulse_duration, cooler->power, peltier->power,
+        		menu->position, menu->digit_state, menu->unit);
+
+        last_encoder_value = encoder->position_norm;
+        last_menu_state = menu->menu_state;
+        last_digit_state = menu->digit_state;
+    }
+}
+
+
+/**
  * @brief Обработчик состояния измерений (MEASURING)
+ * @param context Указатель на менеджер состояний приложения
+ *
+ * Управляет активным экспериментом: обновляет измерения, контролирует мотор,
+ * проверяет безопасность и обрабатывает состояния экспериментального автомата.
+ */
+void handle_experiment_state(void* context)
+{
+    if (context == NULL) return;
+
+    app_state_manager_t* manager = (app_state_manager_t*)context;
+    laser_t* laser = manager->app_context.laser;
+    cooler_t* cooler = manager->app_context.cooler;
+    peltier_t* peltier = manager->app_context.peltier;
+    menu_t* menu = manager->app_context.menu;
+
+    static uint32_t last_display_update = 0;
+	uint32_t time_now = HAL_GetTick();
+
+	// Если первый вход
+    if (manager->app_context.first_entry_state)
+    {
+    	manager->app_context.first_entry_state = false;
+    	laser->is_active = true;
+
+    	// Время для лазера обновляется лишь на старте
+    	laser->last_update_time = time_now;
+    	last_display_update = time_now;
+		laser->elapsed_time = 0;
+
+		HD44780_Clear();
+
+		HAL_GPIO_WritePin(LED_BUTTON_GPIO_Port, LED_BUTTON_Pin, GPIO_PIN_SET);
+
+    	// Используем разные функции ui для разных режимов
+    	if (laser->switch_used)
+    	{
+    		ui_update_continuous_experiment(cooler->power, peltier->power,
+                    menu->position, menu->digit_state, MAX_CONTINIOUS_PULSE_TIME);
+    	}
+    	else
+    	{
+    		ui_update_pulse_experiment(cooler->power, peltier->power,
+                    menu->position, menu->digit_state);
+    	}
+    }
+
+    // Обновляем оставшееся время эксперимента на дисплее
+    if (laser->pulse_type == CONTINUOUS_PULSE && time_now - last_display_update > DISPLAY_EXPERIMENT_UPDATE_TIME)
+    {
+    	laser->elapsed_time = time_now - laser->last_update_time;
+
+		ui_update_continuous_experiment(cooler->power, peltier->power,
+                menu->position, menu->digit_state, MAX_CONTINIOUS_PULSE_TIME - laser->elapsed_time);
+
+    	last_display_update = HAL_GetTick();
+
+    	if (laser->elapsed_time > MAX_CONTINIOUS_PULSE_TIME)
+    	{
+			manager->app_context.laser_is_active = false;
+			switch_safety();
+    	}
+    }
+
+    // Проверяем выключился ли лазер. Если выключился, то гарантируем,
+    // что приложение сразу не перейдет в меню и картинка успеет отобразиться
+    if (!laser->is_active && (HAL_GetTick() - laser->last_update_time) > MIN_DISPLAY_PULSE_TIME)
+    {
+		HAL_GPIO_WritePin(LED_BUTTON_GPIO_Port, LED_BUTTON_Pin, GPIO_PIN_RESET);
+
+    	manager->app_context.laser_is_active = false;
+    	manager->app_context.first_entry_state = true;
+    	app_state_transition(manager, APP_STATE_MENU);
+    }
+}
+
+
+/**
+ * @brief Функция, которая сообщает, что МК жив
+ */
+void blink_led(GPIO_TypeDef* gpio_port, uint16_t gpio_pin, uint32_t delay)
+{
+	static uint32_t last_led_update = 0;
+
+    if (HAL_GetTick() - last_led_update > delay)
+    {
+        HAL_GPIO_TogglePin(gpio_port, gpio_pin);
+        last_led_update = HAL_GetTick();
+    }
+}
+
+
+/**
+ * @brief Проверка границ значений энкодера в случае изменения айтема меню
  * @param encoder Указатель на энкодер
  * @param menu Указатель на меню
  * @param laser Указатель на лазер
  * @param cooler Указатель на вентилятор
  * @param peltier Указатель на элемент Пельте
- *
- * Проверка границ значений энкодера в случае изменения айтема меню
  */
 static void check_encoder_limits(encoder_t* encoder, menu_t* menu, laser_t* laser, cooler_t* cooler, peltier_t* peltier)
 {
@@ -333,6 +342,40 @@ static void check_encoder_limits(encoder_t* encoder, menu_t* menu, laser_t* lase
 
 
 /**
+ * @brief Синхронизация положения энкодера с текущими значениями айтема меню.
+ * @param encoder Указатель на энкодер
+ * @param menu Указатель на меню
+ * @param laser Указатель на лазер
+ * @param cooler Указатель на вентилятор
+ * @param peltier Указатель на элемент Пельте
+ *
+ * Нужно, чтобы поворот энкодера во время эксперимента не влиял на реальные значения параметров
+ */
+static void encoder_sync_position(encoder_t* encoder, menu_t* menu, laser_t* laser, cooler_t* cooler, peltier_t* peltier)
+{
+	int32_t target_value = 0;
+
+	switch(menu->menu_state)
+	{
+		case MENU_STATE_SET_TIME:
+			target_value = laser->pulse_duration;
+			break;
+		case MENU_STATE_SET_PELTIER:
+			target_value = cooler->power;
+			break;
+		case MENU_STATE_SET_COOLER:
+			target_value = peltier->power;
+			break;
+	}
+
+	encoder->position_raw = target_value;
+	encoder->position_norm = target_value;
+	encoder->prev_raw_count = __HAL_TIM_GET_COUNTER(encoder->htim);
+	encoder->remainder = 0;
+}
+
+
+/**
  * @brief Проверка тумблера на отключение
  * @param None
  *
@@ -347,8 +390,11 @@ static void switch_safety(void)
 
 		while(state)
 		{
-			blink_led(LED_GPIO_Port, LED_Pin, ERROR_BLINK_DELAY);
+//			blink_led(LED_GPIO_Port, LED_Pin, ERROR_BLINK_DELAY);
+			blink_led(LED_BUTTON_GPIO_Port, LED_BUTTON_Pin, ERROR_BLINK_DELAY);
 			state = !toggle_switch_get_state(&toggle_switch);
 		}
+
+		HAL_GPIO_WritePin(LED_BUTTON_GPIO_Port, LED_BUTTON_Pin, GPIO_PIN_RESET);
 	}
 }
